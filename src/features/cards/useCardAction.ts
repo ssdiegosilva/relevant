@@ -43,3 +43,37 @@ export function useCardAction() {
     },
   });
 }
+
+export function useRemoveCardAction() {
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      cardId,
+      action,
+    }: {
+      cardId: string;
+      action: CardAction;
+    }) => {
+      const userId = session?.user.id;
+      if (!userId) throw new Error('No session');
+      const { error } = await supabase
+        .from('card_interactions')
+        .delete()
+        .eq('user_id', userId)
+        .eq('card_id', cardId)
+        .eq('action', action);
+      if (error) throw error;
+    },
+    onSuccess: (_, vars) => {
+      if (vars.action === 'studied') {
+        queryClient.invalidateQueries({ queryKey: ['profile', session?.user.id] });
+        queryClient.invalidateQueries({ queryKey: ['streak', session?.user.id] });
+      }
+      if (vars.action === 'saved') {
+        queryClient.invalidateQueries({ queryKey: ['saved-cards', session?.user.id] });
+      }
+    },
+  });
+}

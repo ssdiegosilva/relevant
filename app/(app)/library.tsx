@@ -22,39 +22,44 @@ import type { Card, CardType } from '@/src/features/cards/types';
 import { DomainTreeCard } from '@/src/features/topics/components/DomainTreeCard';
 import { useKnowledgeTree, type StudiedTopic } from '@/src/features/topics/useKnowledgeTree';
 import { useTopicCards } from '@/src/features/topics/useTopicCards';
+import { useI18n } from '@/src/lib/i18n';
+import type { StringKey } from '@/src/lib/strings';
 
-const TYPE_LABEL: Record<CardType, string> = {
-  concept: 'Concept',
-  example: 'Example',
-  best_practice: 'Best practice',
-  pitfall: 'Pitfall',
-  news: 'News',
+const TYPE_KEY: Record<CardType, StringKey> = {
+  concept: 'cardType.concept',
+  example: 'cardType.example',
+  best_practice: 'cardType.best_practice',
+  pitfall: 'cardType.pitfall',
+  news: 'cardType.news',
 };
 
-type Tab = 'tree' | 'saved';
+type Tab = 'tree' | 'favorites';
 
 export default function Library() {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
   const { session } = useAuth();
   const userId = session?.user.id;
+  const { t } = useI18n();
 
   const [tab, setTab] = useState<Tab>('tree');
   const [activeTopic, setActiveTopic] = useState<StudiedTopic | null>(null);
-  const [savedQuery, setSavedQuery] = useState('');
+  const [favoritesQuery, setFavoritesQuery] = useState('');
 
   const { data: tree, isLoading: treeLoading } = useKnowledgeTree(userId);
-  const { data: saved, isLoading: savedLoading } = useSavedCards(userId);
+  const { data: favorites, isLoading: favoritesLoading } = useSavedCards(userId);
 
   const totalTopics = tree?.reduce((sum, d) => sum + d.children.length, 0) ?? 0;
   const totalCards = tree?.reduce((sum, d) => sum + d.totalCards, 0) ?? 0;
 
-  const filteredSaved = useMemo(() => {
-    if (!saved) return [];
-    if (!savedQuery.trim()) return saved;
-    const q = savedQuery.trim().toLowerCase();
-    return saved.filter((card) => card.title.toLowerCase().includes(q) || card.content.toLowerCase().includes(q));
-  }, [saved, savedQuery]);
+  const filteredFavorites = useMemo(() => {
+    if (!favorites) return [];
+    if (!favoritesQuery.trim()) return favorites;
+    const q = favoritesQuery.trim().toLowerCase();
+    return favorites.filter(
+      (card) => card.title.toLowerCase().includes(q) || card.content.toLowerCase().includes(q),
+    );
+  }, [favorites, favoritesQuery]);
 
   const cardWidth = Dimensions.get('window').width - 64;
 
@@ -65,28 +70,37 @@ export default function Library() {
       </View>
 
       <View style={styles.header}>
-        <Text style={[styles.heading, { color: c.text }]}>Library</Text>
+        <Text style={[styles.heading, { color: c.text }]}>{t('library.heading')}</Text>
         {tab === 'tree' ? (
           <Text style={[styles.subtitle, { color: c.icon }]}>
-            {totalTopics} topics across {tree?.length ?? 0} areas · {totalCards} cards
+            {t('library.treeSubtitle', {
+              topics: totalTopics,
+              areas: tree?.length ?? 0,
+              cards: totalCards,
+            })}
           </Text>
         ) : (
-          <Text style={[styles.subtitle, { color: c.icon }]}>{saved?.length ?? 0} saved cards</Text>
+          <Text style={[styles.subtitle, { color: c.icon }]}>
+            {t('library.favoritesSubtitle', { n: favorites?.length ?? 0 })}
+          </Text>
         )}
       </View>
 
       <View style={styles.tabs}>
-        <TabButton label="Tree" active={tab === 'tree'} onPress={() => setTab('tree')} c={c} />
-        <TabButton label="Saved" active={tab === 'saved'} onPress={() => setTab('saved')} c={c} />
+        <TabButton label={t('library.tab.tree')} active={tab === 'tree'} onPress={() => setTab('tree')} c={c} />
+        <TabButton
+          label={t('library.tab.favorites')}
+          active={tab === 'favorites'}
+          onPress={() => setTab('favorites')}
+          c={c}
+        />
       </View>
 
       {tab === 'tree' ? (
         treeLoading ? (
-          <Text style={[styles.empty, { color: c.icon }]}>Loading…</Text>
+          <Text style={[styles.empty, { color: c.icon }]}>{t('common.loading')}</Text>
         ) : (tree ?? []).length === 0 ? (
-          <Text style={[styles.empty, { color: c.icon }]}>
-            Your tree is bare. Generate cards in Today and topics will start branching out here.
-          </Text>
+          <Text style={[styles.empty, { color: c.icon }]}>{t('library.emptyTree')}</Text>
         ) : (
           <FlatList
             data={tree}
@@ -101,22 +115,20 @@ export default function Library() {
         <View style={{ flex: 1 }}>
           <TextInput
             style={[styles.search, { color: c.text, borderColor: c.icon }]}
-            placeholder="Search saved cards"
+            placeholder={t('library.searchFavorites')}
             placeholderTextColor={c.icon}
-            value={savedQuery}
-            onChangeText={setSavedQuery}
+            value={favoritesQuery}
+            onChangeText={setFavoritesQuery}
           />
-          {savedLoading ? (
-            <Text style={[styles.empty, { color: c.icon }]}>Loading…</Text>
-          ) : filteredSaved.length === 0 ? (
+          {favoritesLoading ? (
+            <Text style={[styles.empty, { color: c.icon }]}>{t('common.loading')}</Text>
+          ) : filteredFavorites.length === 0 ? (
             <Text style={[styles.empty, { color: c.icon }]}>
-              {saved?.length === 0
-                ? 'No saved cards yet. Tap "Save" on cards in Today to keep them here.'
-                : 'No matches.'}
+              {favorites?.length === 0 ? t('library.emptyFavorites') : t('library.noMatches')}
             </Text>
           ) : (
             <FlatList
-              data={filteredSaved}
+              data={filteredFavorites}
               keyExtractor={(c) => c.id}
               contentContainerStyle={styles.list}
               renderItem={({ item }) => <SavedCardRow card={item} c={c} />}
@@ -155,9 +167,10 @@ function TabButton({
 
 function SavedCardRow({ card, c }: { card: Card; c: { text: string; icon: string; tint: string } }) {
   const [expanded, setExpanded] = useState(false);
+  const { t } = useI18n();
   return (
     <Pressable onPress={() => setExpanded((v) => !v)} style={[styles.row, { borderColor: c.icon + '33' }]}>
-      <Text style={[styles.rowType, { color: c.tint }]}>{TYPE_LABEL[card.card_type]}</Text>
+      <Text style={[styles.rowType, { color: c.tint }]}>{t(TYPE_KEY[card.card_type])}</Text>
       <Text style={[styles.rowTitle, { color: c.text }]} numberOfLines={expanded ? 0 : 2}>
         {card.title}
       </Text>
@@ -180,6 +193,7 @@ function TopicCardsSheet({
 }) {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
+  const { t } = useI18n();
   const { data: cards, isLoading } = useTopicCards(userId, topic?.id ?? null);
 
   return (
@@ -189,20 +203,20 @@ function TopicCardsSheet({
           <View style={{ flex: 1 }}>
             <Text style={[styles.modalTitle, { color: c.text }]}>{topic?.name ?? ''}</Text>
             <Text style={[styles.modalSubtitle, { color: c.icon }]}>
-              {cards?.length ?? 0} cards on this topic
+              {t('library.cardsOnTopic', { n: cards?.length ?? 0 })}
             </Text>
           </View>
           <Pressable onPress={onClose} style={[styles.closeButton, { borderColor: c.icon }]}>
-            <Text style={{ color: c.text }}>Close</Text>
+            <Text style={{ color: c.text }}>{t('library.close')}</Text>
           </Pressable>
         </View>
         {isLoading ? (
-          <Text style={[styles.empty, { color: c.icon }]}>Loading…</Text>
+          <Text style={[styles.empty, { color: c.icon }]}>{t('common.loading')}</Text>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
             {(cards ?? []).map((card) => (
               <View key={card.id} style={[styles.row, { borderColor: c.icon + '33' }]}>
-                <Text style={[styles.rowType, { color: c.tint }]}>{TYPE_LABEL[card.card_type]}</Text>
+                <Text style={[styles.rowType, { color: c.tint }]}>{t(TYPE_KEY[card.card_type])}</Text>
                 <Text style={[styles.rowTitle, { color: c.text }]}>{card.title}</Text>
                 <Markdown
                   style={{

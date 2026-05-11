@@ -51,8 +51,15 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "REPLACE_AFTER_EAS_INIT"
+        "projectId": "1e43c3fe-fa41-4334-92e9-33f2b490ba64"
       }
+    },
+    "owner": "ssdiegosilva",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1e43c3fe-fa41-4334-92e9-33f2b490ba64"
     }
   }
 }

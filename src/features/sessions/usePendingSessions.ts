@@ -7,7 +7,7 @@ export type PendingSession = {
   created_at: string;
   card_count: number;
   challenge_description: string;
-  acted_count: number;
+  studied_count: number;
 };
 
 export function usePendingSessions(userId: string | undefined) {
@@ -33,21 +33,21 @@ export function usePendingSessions(userId: string | undefined) {
           .select('id')
           .eq('session_id', s.id);
         const cardIds = (cardsRows ?? []).map((r: any) => r.id);
-        let actedCount = 0;
+        let studiedCount = 0;
         if (cardIds.length) {
           const { data: ciRows } = await supabase
             .from('card_interactions')
             .select('card_id, action')
             .in('card_id', cardIds)
-            .in('action', ['studied', 'saved', 'skipped']);
-          actedCount = new Set((ciRows ?? []).map((r: any) => r.card_id)).size;
+            .eq('action', 'studied');
+          studiedCount = new Set((ciRows ?? []).map((r: any) => r.card_id)).size;
         }
         out.push({
           id: s.id,
           created_at: s.created_at,
           card_count: s.card_count,
           challenge_description: s.challenges?.description ?? 'Untitled',
-          acted_count: actedCount,
+          studied_count: studiedCount,
         });
       }
       return out;

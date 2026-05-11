@@ -95,7 +95,7 @@ export function useKnowledgeTree(userId: string | undefined) {
         });
       }
 
-      if (orphans.length > 0) {
+      if (orphans.length >= 3) {
         tree.push({
           root: { id: 'other', slug: 'other', name: 'Other' },
           children: orphans.sort((a, b) => b.cardCount - a.cardCount),

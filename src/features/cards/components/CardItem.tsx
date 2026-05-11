@@ -3,15 +3,17 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useI18n } from '@/src/lib/i18n';
+import type { StringKey } from '@/src/lib/strings';
 
 import type { Card, CardType } from '../types';
 
-const TYPE_LABEL: Record<CardType, string> = {
-  concept: 'Concept',
-  example: 'Example',
-  best_practice: 'Best practice',
-  pitfall: 'Pitfall',
-  news: 'News',
+const TYPE_KEY: Record<CardType, StringKey> = {
+  concept: 'cardType.concept',
+  example: 'cardType.example',
+  best_practice: 'cardType.best_practice',
+  pitfall: 'cardType.pitfall',
+  news: 'cardType.news',
 };
 
 const TYPE_COLOR: Record<CardType, string> = {
@@ -22,44 +24,48 @@ const TYPE_COLOR: Record<CardType, string> = {
   news: '#FF3B30',
 };
 
+const ACTION_COLOR = '#3478F6';
+const FAVORITE_COLOR = '#FFB400';
+
 export type CardActionTriggers = {
-  onStudied: () => void;
-  onSave: () => void;
-  onSkip: () => void;
+  onFavorite: () => void;
+  onNext: () => void;
+  onFinish: () => void;
 };
 
 export function CardItem({
   card,
   index,
   total,
-  studied,
-  saved,
-  skipped,
-  onStudied,
-  onSave,
-  onSkip,
+  isLast,
+  favorited,
+  finishing,
+  onFavorite,
+  onNext,
+  onFinish,
 }: {
   card: Card;
   index: number;
   total: number;
-  studied?: boolean;
-  saved?: boolean;
-  skipped?: boolean;
+  isLast: boolean;
+  favorited?: boolean;
+  finishing?: boolean;
 } & CardActionTriggers) {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
   const accent = TYPE_COLOR[card.card_type];
+  const { t } = useI18n();
 
   return (
     <View style={[styles.card, { backgroundColor: c.background }]}>
       <View style={styles.header}>
         <View style={[styles.typeBadge, { backgroundColor: accent + '22' }]}>
           <Text style={{ color: accent, fontWeight: '600', fontSize: 12 }}>
-            {TYPE_LABEL[card.card_type]}
+            {t(TYPE_KEY[card.card_type])}
           </Text>
         </View>
         <Text style={[styles.progress, { color: c.icon }]}>
-          {index + 1} of {total} · {card.estimated_minutes} min
+          {t('card.progress', { i: index + 1, total, min: card.estimated_minutes })}
         </Text>
       </View>
 
@@ -104,28 +110,28 @@ export function CardItem({
 
       <View style={styles.actions}>
         <ActionButton
-          label={studied ? '✓ Studied' : 'Studied'}
-          color={c.tint}
-          filled={studied}
-          disabled={studied}
-          onPress={onStudied}
-        />
-        <ActionButton
-          label={saved ? '✓ Saved' : 'Save'}
-          color={c.tint}
+          label={favorited ? t('card.favorited') : t('card.favorite')}
+          color={FAVORITE_COLOR}
           outlined
-          filled={saved}
-          disabled={saved}
-          onPress={onSave}
+          filled={favorited}
+          onPress={onFavorite}
         />
-        <ActionButton
-          label={skipped ? '✓ Skipped' : 'Skip'}
-          color={c.icon}
-          outlined
-          filled={skipped}
-          disabled={skipped}
-          onPress={onSkip}
-        />
+        {isLast ? (
+          <ActionButton
+            label={finishing ? '…' : t('card.finish')}
+            color={ACTION_COLOR}
+            filled
+            disabled={finishing}
+            onPress={onFinish}
+          />
+        ) : (
+          <ActionButton
+            label={t('card.next')}
+            color={ACTION_COLOR}
+            filled
+            onPress={onNext}
+          />
+        )}
       </View>
     </View>
   );

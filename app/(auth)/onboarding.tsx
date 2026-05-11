@@ -16,31 +16,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
 import { useAuth } from '@/src/features/auth/AuthProvider';
+import {
+  MACRO_CATEGORIES,
+  MAX_INTERESTS,
+  macroAllInterests,
+} from '@/src/features/profile/constants';
+import { useI18n } from '@/src/lib/i18n';
+import type { StringKey } from '@/src/lib/strings';
 import { supabase } from '@/src/lib/supabase';
 
-const ROLES = ['Backend dev', 'Frontend dev', 'Fullstack', 'Mobile dev', 'Data engineer', 'DevOps / SRE', 'ML engineer', 'Tech lead'];
-
-const INTERESTS = [
-  'Frontend',
-  'Backend',
-  'DevOps',
-  'AI / ML',
-  'Mobile',
-  'Data',
-  'Security',
-  'Architecture',
-  'Cloud',
-  'Databases',
-  'Performance',
-  'Testing',
+const ROLES: { value: string; key: StringKey }[] = [
+  { value: 'Backend dev', key: 'role.backend' },
+  { value: 'Frontend dev', key: 'role.frontend' },
+  { value: 'Fullstack', key: 'role.fullstack' },
+  { value: 'Mobile dev', key: 'role.mobile' },
+  { value: 'Data engineer', key: 'role.data' },
+  { value: 'DevOps / SRE', key: 'role.devops' },
+  { value: 'ML engineer', key: 'role.ml' },
+  { value: 'Tech lead', key: 'role.lead' },
 ];
 
-const EXPERIENCE = [
-  { label: '0-2 yrs', value: 1 },
-  { label: '3-5 yrs', value: 4 },
-  { label: '6-10 yrs', value: 8 },
-  { label: '10+ yrs', value: 12 },
+const EXPERIENCE: { key: StringKey; value: number }[] = [
+  { key: 'exp.0-2', value: 1 },
+  { key: 'exp.3-5', value: 4 },
+  { key: 'exp.6-10', value: 8 },
+  { key: 'exp.10plus', value: 12 },
 ];
 
 const TIMES = ['08:00', '12:00', '18:00', '20:00', '22:00'];
@@ -51,11 +54,13 @@ export default function Onboarding() {
   const { session } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const [step, setStep] = useState(0);
   const [role, setRole] = useState<string>('');
   const [years, setYears] = useState<number>(4);
   const [interests, setInterests] = useState<string[]>([]);
+  const [expandedCat, setExpandedCat] = useState<Record<string, boolean>>({});
   const [goals, setGoals] = useState('');
   const [studyTime, setStudyTime] = useState('20:00');
   const [saving, setSaving] = useState(false);
@@ -65,7 +70,7 @@ export default function Onboarding() {
 
   const toggleInterest = (i: string) => {
     setInterests((prev) =>
-      prev.includes(i) ? prev.filter((x) => x !== i) : prev.length >= 5 ? prev : [...prev, i],
+      prev.includes(i) ? prev.filter((x) => x !== i) : prev.length >= MAX_INTERESTS ? prev : [...prev, i],
     );
   };
 
@@ -90,7 +95,7 @@ export default function Onboarding() {
       .eq('id', userId);
     if (pErr) {
       setSaving(false);
-      Alert.alert('Could not save profile', pErr.message);
+      Alert.alert(t('onb.couldNotSaveProfile'), pErr.message);
       return;
     }
     const { error: sErr } = await supabase
@@ -99,7 +104,7 @@ export default function Onboarding() {
       .eq('user_id', userId);
     setSaving(false);
     if (sErr) {
-      Alert.alert('Could not save settings', sErr.message);
+      Alert.alert(t('onb.couldNotSaveSettings'), sErr.message);
       return;
     }
     await queryClient.refetchQueries({ queryKey: ['profile', userId] });
@@ -128,31 +133,111 @@ export default function Onboarding() {
       </View>
       <ScrollView contentContainerStyle={styles.body}>
         {step === 0 && (
-          <Step title="What's your role?" subtitle="Pick the closest match." c={c}>
+          <Step title={t('onb.role.title')} subtitle={t('onb.role.subtitle')} c={c}>
             {ROLES.map((r) => (
-              <Chip key={r} label={r} active={role === r} onPress={() => setRole(r)} c={c} />
+              <Chip
+                key={r.value}
+                label={t(r.key)}
+                active={role === r.value}
+                onPress={() => setRole(r.value)}
+                c={c}
+              />
             ))}
           </Step>
         )}
         {step === 1 && (
-          <Step title="Years of experience" subtitle="Cards will adjust to your level." c={c}>
+          <Step title={t('onb.exp.title')} subtitle={t('onb.exp.subtitle')} c={c}>
             {EXPERIENCE.map((e) => (
-              <Chip key={e.value} label={e.label} active={years === e.value} onPress={() => setYears(e.value)} c={c} />
+              <Chip
+                key={e.value}
+                label={t(e.key)}
+                active={years === e.value}
+                onPress={() => setYears(e.value)}
+                c={c}
+              />
             ))}
           </Step>
         )}
         {step === 2 && (
-          <Step title="Top interests" subtitle="Pick up to 5." c={c}>
-            {INTERESTS.map((i) => (
-              <Chip key={i} label={i} active={interests.includes(i)} onPress={() => toggleInterest(i)} c={c} />
-            ))}
-          </Step>
+          <View style={{ gap: 8 }}>
+            <Text style={[styles.title, { color: c.text }]}>{t('onb.interests.title')}</Text>
+            <Text style={[styles.subtitle, { color: c.icon }]}>
+              {t('onb.interests.subtitle', { max: MAX_INTERESTS })}
+            </Text>
+            <View style={{ gap: 12, marginTop: 16 }}>
+              {MACRO_CATEGORIES.map((cat) => {
+                const isOpen = !!expandedCat[cat.id];
+                const count = macroAllInterests(cat).filter((i) => interests.includes(i)).length;
+                return (
+                  <View
+                    key={cat.id}
+                    style={[styles.categoryCard, { borderColor: c.icon + '33' }]}>
+                    <Pressable
+                      onPress={() =>
+                        setExpandedCat((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }))
+                      }
+                      style={styles.categoryHeader}>
+                      <View style={styles.categoryHeaderLeft}>
+                        <View style={[styles.iconBubble, { backgroundColor: c.tint + '1A' }]}>
+                          <MaterialCommunityIcons
+                            name={cat.icon as any}
+                            size={22}
+                            color={c.tint}
+                          />
+                        </View>
+                        <Text style={[styles.categoryName, { color: c.text }]}>
+                          {cat.name}
+                        </Text>
+                      </View>
+                      <View style={styles.categoryHeaderRight}>
+                        {count > 0 ? (
+                          <View style={[styles.countBadge, { backgroundColor: c.tint }]}>
+                            <Text style={styles.countBadgeText}>{count}</Text>
+                          </View>
+                        ) : null}
+                        <MaterialCommunityIcons
+                          name={isOpen ? 'chevron-up' : 'chevron-down'}
+                          size={22}
+                          color={c.icon}
+                        />
+                      </View>
+                    </Pressable>
+                    {isOpen ? (
+                      <View style={styles.groupsContainer}>
+                        {cat.groups.map((group) => (
+                          <View key={group.name} style={styles.subGroup}>
+                            <Text style={[styles.subGroupLabel, { color: c.icon }]}>
+                              {group.name}
+                            </Text>
+                            <View style={styles.chipRow}>
+                              {group.interests.map((i) => (
+                                <Chip
+                                  key={i}
+                                  label={i}
+                                  active={interests.includes(i)}
+                                  onPress={() => toggleInterest(i)}
+                                  c={c}
+                                />
+                              ))}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={[styles.count, { color: c.icon }]}>
+              {t('interests.selected', { n: interests.length, max: MAX_INTERESTS })}
+            </Text>
+          </View>
         )}
         {step === 3 && (
-          <Step title="Your goal" subtitle="One sentence — what do you want to grow into?" c={c}>
+          <Step title={t('onb.goal.title')} subtitle={t('onb.goal.subtitle')} c={c}>
             <TextInput
               style={[styles.textArea, { color: c.text, borderColor: c.icon }]}
-              placeholder="e.g., be ready for a tech lead role in 2 years"
+              placeholder={t('onb.goal.placeholder')}
               placeholderTextColor={c.icon}
               multiline
               value={goals}
@@ -161,9 +246,9 @@ export default function Onboarding() {
           </Step>
         )}
         {step === 4 && (
-          <Step title="When do you study?" subtitle="We'll send a gentle reminder around then." c={c}>
-            {TIMES.map((t) => (
-              <Chip key={t} label={t} active={studyTime === t} onPress={() => setStudyTime(t)} c={c} />
+          <Step title={t('onb.time.title')} subtitle={t('onb.time.subtitle')} c={c}>
+            {TIMES.map((time) => (
+              <Chip key={time} label={time} active={studyTime === time} onPress={() => setStudyTime(time)} c={c} />
             ))}
           </Step>
         )}
@@ -176,7 +261,7 @@ export default function Onboarding() {
           {saving ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>{step === total - 1 ? 'Finish' : 'Continue'}</Text>
+            <Text style={styles.buttonText}>{step === total - 1 ? t('onb.finish') : t('onb.continue')}</Text>
           )}
         </Pressable>
       </View>
@@ -237,8 +322,38 @@ const styles = StyleSheet.create({
   body: { padding: 24, paddingBottom: 96 },
   title: { fontSize: 26, fontWeight: '700' },
   subtitle: { fontSize: 15 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 16 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, borderWidth: 1 },
+  sectionLabel: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
+  count: { fontSize: 13, textAlign: 'center', marginTop: 16 },
+  groupsContainer: { marginTop: 12, gap: 14 },
+  subGroup: { gap: 4 },
+  subGroupLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
+  categoryCard: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  categoryHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  categoryHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryName: { fontSize: 16, fontWeight: '600' },
+  countBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   textArea: { borderWidth: 1, borderRadius: 12, padding: 14, minHeight: 110, fontSize: 16, marginTop: 16 },
   footer: { padding: 16, paddingBottom: 32 },
   button: { paddingVertical: 14, borderRadius: 12, alignItems: 'center' },

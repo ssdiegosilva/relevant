@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
@@ -21,23 +24,20 @@ import { useAuth } from '@/src/features/auth/AuthProvider';
 import { useGenerateCards, type GenerationMode } from '@/src/features/cards/useGenerateCards';
 import { SessionStudyView } from '@/src/features/sessions/SessionStudyView';
 import { usePendingSessions, type PendingSession } from '@/src/features/sessions/usePendingSessions';
+import { useArchiveSession, useDeleteSession } from '@/src/features/sessions/useSessionMutations';
+import { useI18n } from '@/src/lib/i18n';
+import type { StringKey } from '@/src/lib/strings';
 
-const LOADING_MESSAGES: Record<GenerationMode, string[]> = {
-  challenge: [
-    'Understanding your context…',
-    'Finding the sharpest angles…',
-    'Picking 3 cards worth your time…',
-  ],
-  surprise: [
-    'Reading your trail so far…',
-    'Looking one step ahead…',
-    'Building cards on it…',
-  ],
-  side_brain: [
-    'Stepping outside software…',
-    'Hunting an idea worth borrowing…',
-    'Wiring up the cards…',
-  ],
+const LOADING_KEYS: Record<GenerationMode, StringKey[]> = {
+  challenge: ['today.loading.challenge.1', 'today.loading.challenge.2', 'today.loading.challenge.3'],
+  surprise: ['today.loading.surprise.1', 'today.loading.surprise.2', 'today.loading.surprise.3'],
+  side_brain: ['today.loading.sideBrain.1', 'today.loading.sideBrain.2', 'today.loading.sideBrain.3'],
+};
+
+type BuildingItem = {
+  localId: string;
+  description: string;
+  createdAt: string;
 };
 
 export default function Today() {
@@ -46,28 +46,29 @@ export default function Today() {
   const { session: auth } = useAuth();
   const userId = auth?.user.id;
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const [description, setDescription] = useState('');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [loadingMode, setLoadingMode] = useState<GenerationMode | 'queue' | null>(null);
+  const [loadingMode, setLoadingMode] = useState<GenerationMode | null>(null);
   const [loadingMsg, setLoadingMsg] = useState<string>('');
   const [toast, setToast] = useState<string | null>(null);
+  const [building, setBuilding] = useState<BuildingItem[]>([]);
 
   const generate = useGenerateCards();
   const pending = usePendingSessions(userId);
 
   useEffect(() => {
     if (!loadingMode) return;
-    const messages =
-      loadingMode === 'queue' ? ['Queuing your idea…', 'Generating cards…'] : LOADING_MESSAGES[loadingMode];
+    const keys = LOADING_KEYS[loadingMode];
     let i = 0;
-    setLoadingMsg(messages[0]);
+    setLoadingMsg(t(keys[0]));
     const id = setInterval(() => {
-      i = (i + 1) % messages.length;
-      setLoadingMsg(messages[i]);
+      i = (i + 1) % keys.length;
+      setLoadingMsg(t(keys[i]));
     }, 2200);
     return () => clearInterval(id);
-  }, [loadingMode]);
+  }, [loadingMode, t]);
 
   useEffect(() => {
     if (!toast) return;
@@ -81,7 +82,7 @@ export default function Today() {
 
   const studyNow = async (mode: GenerationMode) => {
     if (mode === 'challenge' && description.trim().length < 5) {
-      Alert.alert('Tell us more', 'Describe your challenge in a sentence.');
+      Alert.alert(t('today.tellMore.title'), t('today.tellMore.bodyChallenge'));
       return;
     }
     setLoadingMode(mode);
@@ -96,26 +97,35 @@ export default function Today() {
       if (mode === 'challenge') setDescription('');
     } catch (e: any) {
       setLoadingMode(null);
-      Alert.alert('Could not generate', e?.message ?? 'Try again in a moment.');
+      Alert.alert(t('today.couldNotGenerate'), e?.message ?? t('common.tryAgain'));
     }
   };
 
-  const addToQueue = async () => {
-    if (description.trim().length < 5) {
-      Alert.alert('Tell us more', 'Describe what you want to study in a sentence.');
+  const addToQueue = () => {
+    const desc = description.trim();
+    if (desc.length < 5) {
+      Alert.alert(t('today.tellMore.title'), t('today.tellMore.bodyQueue'));
       return;
     }
-    setLoadingMode('queue');
-    try {
-      await generate.mutateAsync({ mode: 'challenge', description: description.trim() });
-      queryClient.invalidateQueries({ queryKey: ['pending-sessions', userId] });
-      setLoadingMode(null);
-      setDescription('');
-      setToast('Added to your queue');
-    } catch (e: any) {
-      setLoadingMode(null);
-      Alert.alert('Could not queue', e?.message ?? 'Try again in a moment.');
-    }
+    const localId = `building-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setBuilding((prev) => [
+      { localId, description: desc, createdAt: new Date().toISOString() },
+      ...prev,
+    ]);
+    setDescription('');
+    setToast(t('today.toastBuilding'));
+
+    generate
+      .mutateAsync({ mode: 'challenge', description: desc })
+      .then(async () => {
+        await queryClient.invalidateQueries({ queryKey: ['pending-sessions', userId] });
+      })
+      .catch((e: any) => {
+        Alert.alert(t('today.couldNotQueue'), e?.message ?? t('common.tryAgain'));
+      })
+      .finally(() => {
+        setBuilding((prev) => prev.filter((b) => b.localId !== localId));
+      });
   };
 
   if (loadingMode) {
@@ -130,25 +140,30 @@ export default function Today() {
   }
 
   const queue = pending.data ?? [];
+  const totalQueueCount = queue.length + building.length;
+  const hasAnyQueue = totalQueueCount > 0;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
       <View style={styles.brandBar}>
         <Logo size={20} />
-        {queue.length > 0 ? (
+        {hasAnyQueue ? (
           <View style={[styles.queueBadge, { backgroundColor: c.tint }]}>
-            <Text style={styles.queueBadgeText}>{queue.length}</Text>
+            <Text style={styles.queueBadgeText}>{totalQueueCount}</Text>
           </View>
         ) : null}
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.heading, { color: c.text }]}>Today</Text>
+          <Text style={[styles.heading, { color: c.text }]}>{t('today.heading')}</Text>
 
-          {queue.length > 0 ? (
+          {hasAnyQueue ? (
             <View style={{ gap: 8 }}>
-              <Text style={[styles.sectionLabel, { color: c.icon }]}>Your queue</Text>
+              <Text style={[styles.sectionLabel, { color: c.icon }]}>{t('today.yourQueue')}</Text>
+              {building.map((b) => (
+                <BuildingQueueItem key={b.localId} item={b} c={c} />
+              ))}
               {queue.map((item) => (
                 <QueueItem
                   key={item.id}
@@ -160,13 +175,13 @@ export default function Today() {
             </View>
           ) : null}
 
-          <View style={{ gap: 12, marginTop: queue.length > 0 ? 12 : 0 }}>
+          <View style={{ gap: 12, marginTop: hasAnyQueue ? 12 : 0 }}>
             <Text style={[styles.sectionLabel, { color: c.icon }]}>
-              {queue.length > 0 ? 'Add another idea' : "What's on your mind?"}
+              {hasAnyQueue ? t('today.addAnother') : t('today.whatsOnMind')}
             </Text>
             <TextInput
               style={[styles.textArea, { color: c.text, borderColor: c.icon }]}
-              placeholder="e.g., Implementing rate limiting in Express, never used Redis"
+              placeholder={t('today.placeholder')}
               placeholderTextColor={c.icon}
               multiline
               value={description}
@@ -176,18 +191,18 @@ export default function Today() {
               <Pressable
                 style={[styles.queueButton, { borderColor: c.tint }]}
                 onPress={addToQueue}>
-                <Text style={[styles.queueButtonText, { color: c.tint }]}>📥 Add to queue</Text>
+                <Text style={[styles.queueButtonText, { color: c.tint }]}>{t('today.addToQueue')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.studyButton, { backgroundColor: c.tint }]}
                 onPress={() => studyNow('challenge')}>
-                <Text style={styles.studyButtonText}>Study now →</Text>
+                <Text style={styles.studyButtonText}>{t('today.studyNow')}</Text>
               </Pressable>
             </View>
 
             <View style={styles.divider}>
               <View style={[styles.dividerLine, { backgroundColor: c.icon + '33' }]} />
-              <Text style={[styles.dividerText, { color: c.icon }]}>or let me pick</Text>
+              <Text style={[styles.dividerText, { color: c.icon }]}>{t('today.orLetMePick')}</Text>
               <View style={[styles.dividerLine, { backgroundColor: c.icon + '33' }]} />
             </View>
 
@@ -195,14 +210,14 @@ export default function Today() {
               <Pressable
                 style={[styles.altButton, { borderColor: c.tint }]}
                 onPress={() => studyNow('surprise')}>
-                <Text style={[styles.altLabel, { color: c.tint }]}>✨ Surprise me</Text>
-                <Text style={[styles.altHint, { color: c.icon }]}>Next on my trail</Text>
+                <Text style={[styles.altLabel, { color: c.tint }]}>{t('today.surpriseMe')}</Text>
+                <Text style={[styles.altHint, { color: c.icon }]}>{t('today.surpriseHint')}</Text>
               </Pressable>
               <Pressable
                 style={[styles.altButton, { borderColor: '#A855F7' }]}
                 onPress={() => studyNow('side_brain')}>
-                <Text style={[styles.altLabel, { color: '#A855F7' }]}>🧠 Side brain</Text>
-                <Text style={[styles.altHint, { color: c.icon }]}>Outside software</Text>
+                <Text style={[styles.altLabel, { color: '#A855F7' }]}>{t('today.sideBrain')}</Text>
+                <Text style={[styles.altHint, { color: c.icon }]}>{t('today.sideBrainHint')}</Text>
               </Pressable>
             </View>
           </View>
@@ -225,36 +240,116 @@ function QueueItem({
 }: {
   item: PendingSession;
   onPress: () => void;
-  c: { text: string; icon: string; tint: string };
+  c: { text: string; icon: string; tint: string; background: string };
 }) {
-  const acted = item.acted_count;
+  const swipeRef = useRef<SwipeableMethods>(null);
+  const archive = useArchiveSession();
+  const del = useDeleteSession();
+  const { t } = useI18n();
+
+  const studied = item.studied_count;
   const total = item.card_count;
-  const remaining = total - acted;
+  const remaining = total - studied;
+
+  const onArchive = () => {
+    swipeRef.current?.close();
+    archive.mutate(item.id);
+  };
+
+  const onDelete = () => {
+    swipeRef.current?.close();
+    Alert.alert(
+      t('queue.deleteTitle'),
+      t('queue.deleteBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.delete'), style: 'destructive', onPress: () => del.mutate(item.id) },
+      ],
+    );
+  };
+
   return (
-    <Pressable onPress={onPress} style={[styles.queueItem, { borderColor: c.icon + '33' }]}>
-      <Text style={[styles.queueItemTitle, { color: c.text }]} numberOfLines={2}>
-        {item.challenge_description}
-      </Text>
-      <View style={styles.queueItemMeta}>
-        <Text style={[styles.queueItemRemaining, { color: c.tint }]}>
-          {remaining > 0 ? `${remaining} card${remaining === 1 ? '' : 's'} to study` : 'Ready'}
+    <ReanimatedSwipeable
+      ref={swipeRef}
+      friction={2}
+      leftThreshold={48}
+      rightThreshold={48}
+      overshootLeft={false}
+      overshootRight={false}
+      renderLeftActions={() => (
+        <Pressable onPress={onArchive} style={[styles.swipeAction, { backgroundColor: c.icon }]}>
+          <Text style={styles.swipeActionText}>{t('common.archive')}</Text>
+        </Pressable>
+      )}
+      renderRightActions={() => (
+        <Pressable onPress={onDelete} style={[styles.swipeAction, { backgroundColor: '#FF3B30' }]}>
+          <Text style={styles.swipeActionText}>{t('common.delete')}</Text>
+        </Pressable>
+      )}
+      containerStyle={styles.swipeContainer}>
+      <Pressable
+        onPress={onPress}
+        style={[
+          styles.queueItem,
+          { borderColor: c.icon + '33', backgroundColor: c.background },
+        ]}>
+        <Text style={[styles.queueItemTitle, { color: c.text }]} numberOfLines={2}>
+          {item.challenge_description}
         </Text>
-        <Text style={[styles.queueItemTime, { color: c.icon }]}>
-          {timeAgo(item.created_at)}
-        </Text>
-      </View>
-    </Pressable>
+        <View style={styles.queueItemMeta}>
+          <Text style={[styles.queueItemRemaining, { color: c.tint }]}>
+            {remaining > 0
+              ? remaining === 1
+                ? t('today.cardToStudy')
+                : t('today.cardsToStudy', { n: remaining })
+              : t('today.ready')}
+          </Text>
+          <Text style={[styles.queueItemTime, { color: c.icon }]}>
+            {timeAgo(item.created_at, t)}
+          </Text>
+        </View>
+      </Pressable>
+    </ReanimatedSwipeable>
   );
 }
 
-function timeAgo(iso: string) {
+function BuildingQueueItem({
+  item,
+  c,
+}: {
+  item: BuildingItem;
+  c: { text: string; icon: string; tint: string };
+}) {
+  const { t } = useI18n();
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.queueItem,
+        { borderColor: c.tint + '33', backgroundColor: c.tint + '15' },
+      ]}>
+      <Text style={[styles.queueItemTitle, { color: c.text }]} numberOfLines={2}>
+        {item.description}
+      </Text>
+      <View style={styles.queueItemMeta}>
+        <View style={styles.buildingRow}>
+          <ActivityIndicator size="small" color={c.tint} />
+          <Text style={[styles.queueItemRemaining, { color: c.tint }]}>{t('today.buildingCards')}</Text>
+        </View>
+        <Text style={[styles.queueItemTime, { color: c.icon }]}>{t('common.justNow')}</Text>
+      </View>
+    </View>
+  );
+}
+
+function timeAgo(iso: string, t: (k: StringKey, vars?: Record<string, string | number>) => string) {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.round(diff / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min} min ago`;
+  if (min < 1) return t('common.justNow');
+  if (min < 60) return t('common.minAgo', { m: min });
   const h = Math.round(min / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.round(h / 24)}d ago`;
+  if (h < 24) return t('common.hAgo', { h });
+  return t('common.dAgo', { d: Math.round(h / 24) });
 }
 
 const styles = StyleSheet.create({
@@ -277,6 +372,15 @@ const styles = StyleSheet.create({
   queueItemMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   queueItemRemaining: { fontSize: 12, fontWeight: '700' },
   queueItemTime: { fontSize: 12 },
+  buildingRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  swipeContainer: { borderRadius: 12, overflow: 'hidden' },
+  swipeAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    minWidth: 96,
+  },
+  swipeActionText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   textArea: {
     borderWidth: 1,
     borderRadius: 12,

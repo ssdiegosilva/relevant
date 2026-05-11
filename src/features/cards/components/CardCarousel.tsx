@@ -8,23 +8,25 @@ const { width } = Dimensions.get('window');
 
 export function CardCarousel({
   cards,
-  onStudied,
-  onSave,
-  onSkip,
-  studiedIds,
-  savedIds,
-  skippedIds,
+  onFavorite,
+  onFinish,
+  favoritedIds,
+  finishing,
 }: {
   cards: Card[];
-  onStudied: (card: Card) => void;
-  onSave: (card: Card) => void;
-  onSkip: (card: Card) => void;
-  studiedIds: Set<string>;
-  savedIds: Set<string>;
-  skippedIds: Set<string>;
+  onFavorite: (card: Card) => void;
+  onFinish: () => void;
+  favoritedIds: Set<string>;
+  finishing: boolean;
 }) {
   const listRef = useRef<FlatList<Card>>(null);
   const [_, setIndex] = useState(0);
+
+  const handleNext = (index: number) => {
+    if (index < cards.length - 1) {
+      listRef.current?.scrollToIndex({ index: index + 1, animated: true });
+    }
+  };
 
   return (
     <FlatList
@@ -47,12 +49,12 @@ export function CardCarousel({
               card={item}
               index={index}
               total={cards.length}
-              studied={studiedIds.has(item.id)}
-              saved={savedIds.has(item.id)}
-              skipped={skippedIds.has(item.id)}
-              onStudied={() => onStudied(item)}
-              onSave={() => onSave(item)}
-              onSkip={() => onSkip(item)}
+              isLast={index === cards.length - 1}
+              favorited={favoritedIds.has(item.id)}
+              finishing={finishing}
+              onFavorite={() => onFavorite(item)}
+              onNext={() => handleNext(index)}
+              onFinish={onFinish}
             />
           </ScrollView>
         </View>

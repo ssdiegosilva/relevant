@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/src/features/auth/AuthProvider';
 import { useProfile } from '@/src/features/auth/useProfile';
+import { I18nProvider } from '@/src/lib/i18n';
 import { queryClient } from '@/src/lib/query-client';
 import { initSentry } from '@/src/lib/sentry';
 
@@ -68,12 +69,14 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            <AuthGate />
-            <StatusBar style="auto" />
-          </ThemeProvider>
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <AuthGate />
+              <StatusBar style="auto" />
+            </ThemeProvider>
+          </AuthProvider>
+        </I18nProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>
   );

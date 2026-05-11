@@ -46,3 +46,6 @@ app-example
 # Supabase local files
 supabase/.temp/
 supabase/.branches/
+
+# Local artifacts
+preview-qr.png

@@ -4,6 +4,8 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
+import { MACRO_SLUGS, classifyMacro, type MacroSlug } from '../_shared/macros.ts';
+
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -27,7 +29,15 @@ const cardsSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['title', 'content', 'card_type', 'difficulty', 'estimated_minutes', 'topics'],
+        required: [
+          'title',
+          'content',
+          'card_type',
+          'difficulty',
+          'estimated_minutes',
+          'topics',
+          'macro_category',
+        ],
         properties: {
           title: { type: 'string', maxLength: 120 },
           content: { type: 'string', maxLength: 2000 },
@@ -38,6 +48,10 @@ const cardsSchema = {
           difficulty: { type: 'integer', minimum: 1, maximum: 5 },
           estimated_minutes: { type: 'integer', minimum: 1, maximum: 15 },
           topics: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 4 },
+          macro_category: {
+            type: 'string',
+            enum: [...MACRO_SLUGS],
+          },
         },
       },
     },
@@ -138,60 +152,67 @@ Deno.serve(async (req) => {
     .single();
   if (sErr || !session) return json(500, { error: 'session_insert_failed', details: sErr?.message });
 
-  const baseProfile = `Audience profile:
-- Role: ${profile?.role ?? 'software engineer'}
-- Experience: ${profile?.experience_years ?? 'unknown'} years
-- Interests: ${(profile?.interests ?? []).join(', ') || 'general tech'}
-- Goal: ${profile?.goals ?? 'stay current and grow'}
+  const profileLines = [
+    profile?.role ? `- Role / field: ${profile.role}` : null,
+    profile?.experience_years
+      ? `- Experience: ~${profile.experience_years} years in their field`
+      : null,
+    `- Interests: ${(profile?.interests ?? []).join(', ') || 'general curiosity'}`,
+    profile?.goals ? `- Goal: ${profile.goals}` : null,
+  ].filter(Boolean);
 
-Already studied recently (avoid pure repetition, but build on it): ${recentTopicNames.join(', ') || 'none yet'}`;
+  const baseProfile = `Learner profile:
+${profileLines.join('\n')}
+
+Already studied recently (avoid pure repetition, build on it): ${recentTopicNames.join(', ') || 'none yet'}`;
+
+  const sharedRules = `Hard rules:
+- Stay strictly within the user's interests / stated topic. The interests above define what counts as "relevant".
+- Match the example style to the domain. If an interest is technical (e.g. React, Postgres, Kubernetes), code examples are great. If an interest is non-technical (e.g. Nutrition, Stoicism, Investing basics, Parenting), use domain-appropriate examples — case studies, frameworks, anecdotes, research findings, practical scenarios. Do NOT default to code unless the domain warrants it.
+- Treat the reader as a thoughtful adult. Skip 101 basics. Focus on trade-offs, pitfalls, mental models, advanced patterns, recent insights, concrete practices.
+- Mix card_type: include at least one "example" (concrete case, anecdote, code snippet, study, scenario — whichever fits) and at least one "pitfall" or "best_practice".
+- Use Markdown. Use code fences ONLY when the content actually warrants code.
+- Topic slugs lowercase hyphenated (e.g. "spaced-repetition", "zone-2-training", "compound-interest", "rate-limiting", "stoic-dichotomy-of-control").
+- Be opinionated and specific. No hedging fluff. Each card under 250 words.
+- macro_category: pick EXACTLY ONE of [tech, health, psychology, career, finance, productivity, family-relationships, learning, philosophy-culture, hobbies-creativity]. This is the trail the card belongs to. Software / engineering / DevOps / data → "tech". Workouts, sleep, nutrition, longevity → "health". Habits, emotions, mental health → "psychology". Leadership, hiring, salary, founder skills → "career". Investing, real estate, retirement, crypto → "finance". Time management, deep work, GTD, note-taking → "productivity". Parenting, marriage, family, dating → "family-relationships". Spaced repetition, languages, memory, deliberate practice → "learning". Stoicism, history, ethics, culture, religion → "philosophy-culture". Cooking, music, sports, photography, travel, crafts → "hobbies-creativity".`;
 
   let systemPrompt: string;
   let userPrompt: string;
 
   if (mode === 'surprise') {
-    systemPrompt = `You are a senior software engineering mentor designing the next step on this builder's learning trail.
+    systemPrompt = `You are a personalized learning mentor designing the next step on this learner's trail.
 
 ${baseProfile}
 
-Your job: pick ONE specific advanced topic that BUILDS on what they already studied OR fills a strategic gap for their goal — something they would not have asked for themselves but that pushes them forward. Then generate ${nCards} cards teaching it.
+Your job: pick ONE specific advanced topic that BUILDS on what they already studied OR fills a strategic gap in their listed interests / goal — something they would not have asked for themselves but that pushes them forward. Then generate ${nCards} cards teaching it.
 
-Rules:
-- Pick a topic that adjacency-jumps from their recent topics (one step further, not far field)
-- Skip basics for experience >= 3 years; focus on trade-offs, pitfalls, advanced patterns, recent updates
-- Mix card_type: at least one "example" with code, at least one "pitfall" or "best_practice"
-- Markdown with code fences when relevant; each card under 250 words
-- Topic slugs lowercase hyphenated (e.g. "rate-limiting", "redis")
-- Opinionated and specific; no hedging fluff
-- The first card title should announce the topic clearly (e.g. "Backpressure in event-driven systems")`;
-    userPrompt = `Surprise me with one specific advanced topic that fits my profile and recent trail. Generate ${nCards} cards on it.`;
+${sharedRules}
+
+Additional:
+- Adjacency-jump from their recent topics (one step further, not far field).
+- The first card title should announce the topic clearly.`;
+    userPrompt = `Pick one specific advanced topic that fits my interests and recent trail. Generate ${nCards} cards on it.`;
   } else if (mode === 'side_brain') {
-    systemPrompt = `You are a polymath mentor helping a software engineer broaden their thinking by exploring a domain OUTSIDE software.
+    systemPrompt = `You are a polymath mentor helping a curious learner broaden their thinking by exploring a domain OUTSIDE their stated interests.
 
 ${baseProfile}
 
-Your job: pick ONE specific topic from a non-software domain — examples: cognitive science, neuroscience, behavioral economics, design thinking, philosophy, history of science, music theory, biology/evolution, complexity theory, urban planning, art history, linguistics, game theory, systems thinking. Then generate ${nCards} cards teaching its core ideas.
+Your job: pick ONE specific topic from a domain DIFFERENT from the learner's listed interests — something they would not naturally encounter, that might unlock a new way of thinking. Vary across calls (don't always pick the same far-field). Then generate ${nCards} cards teaching its core ideas.
 
 Rules:
-- Vary domains across calls — don't always pick cognitive science
-- Choose ideas that connect in surprising ways to engineering, product, or systems thinking — but don't force the analogy in every card; one connection card is enough
-- For domain experts: pick mid-level depth, not 101
-- Mix card_type: include "concept" and "example" with concrete cases or anecdotes
-- Markdown allowed; each card under 250 words
-- Topic slugs hyphenated, can be domain terms (e.g. "loss-aversion", "stigmergy", "hick-law")
-- The first card title should announce the topic clearly (e.g. "Stigmergy: how termites and good codebases self-organize")`;
-    userPrompt = `Pick a topic from a non-software domain and generate ${nCards} cards. Surprise me with the choice.`;
+- Choose ideas that connect in surprising ways to their existing interests (one connection card per session is enough; don't force the analogy in every card).
+- Mid-level depth, not 101.
+- Mix card_type: include "concept" and "example" with concrete cases or anecdotes.
+- Markdown allowed; code fences only when warranted (rare here). Each card under 250 words.
+- Topic slugs hyphenated, can be domain terms (e.g. "loss-aversion", "stigmergy", "hick-law", "ikigai", "kintsugi").
+- The first card title should announce the topic clearly.`;
+    userPrompt = `Pick a topic from a domain different from my listed interests and generate ${nCards} cards. Surprise me with the choice.`;
   } else {
-    systemPrompt = `You are a senior software engineering mentor creating personalized micro study cards in English.
+    systemPrompt = `You are a personalized learning mentor creating micro study cards in English.
 
 ${baseProfile}
 
-Rules:
-- Skip basics if experience >= 3 years; focus on trade-offs, pitfalls, advanced patterns, and recent updates
-- Mix card_type: include at least one "example" with code, at least one "pitfall" or "best_practice"
-- Markdown content with code fences when relevant; keep each card under 250 words
-- Topic slugs/names should be concise and lowercase, hyphenated (e.g. "rate-limiting", "redis")
-- Be opinionated and specific; no hedging fluff`;
+${sharedRules}`;
     userPrompt = `Generate ${nCards} study cards for this challenge:\n\n"${description}"${body.context ? `\n\nExtra context: ${body.context}` : ''}`;
   }
 
@@ -254,6 +275,27 @@ Rules:
     return json(502, { error: 'parse_failed' });
   }
 
+  // Cache for macro root topic ids (slug -> id), populated lazily per request
+  const macroRootIdCache = new Map<MacroSlug, string>();
+  const getMacroRootId = async (slug: MacroSlug): Promise<string | null> => {
+    const cached = macroRootIdCache.get(slug);
+    if (cached) return cached;
+    const { data } = await admin
+      .from('topics')
+      .select('id')
+      .eq('slug', slug)
+      .is('parent_id', null)
+      .eq('verified', true)
+      .maybeSingle();
+    if (data?.id) {
+      macroRootIdCache.set(slug, data.id);
+      return data.id;
+    }
+    return null;
+  };
+
+  const userInterests = (profile?.interests ?? []) as string[];
+
   // Insert cards + match topics
   const insertedCards: any[] = [];
   for (const c of parsed.cards) {
@@ -287,6 +329,9 @@ Rules:
       const missing = slugs.filter((s) => !existingSlugs.has(s));
       let createdTopics: { id: string; slug: string }[] = [];
       if (missing.length) {
+        // Resolve macro parent for these NEW topics only.
+        const macroSlug = classifyMacro(c.macro_category, slugs, userInterests);
+        const parentId = await getMacroRootId(macroSlug);
         const { data: created } = await admin
           .from('topics')
           .insert(
@@ -294,6 +339,7 @@ Rules:
               slug,
               name: slug.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()),
               verified: false,
+              parent_id: parentId,
             })),
           )
           .select('id,slug');

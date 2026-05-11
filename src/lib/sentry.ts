@@ -1,14 +1,5 @@
-import * as Sentry from '@sentry/react-native';
-
-import { env } from './env';
-
 export function initSentry() {
-  if (!env.sentryDsn) return;
-  Sentry.init({
-    dsn: env.sentryDsn,
-    debug: __DEV__,
-    tracesSampleRate: __DEV__ ? 1.0 : 0.2,
-  });
+  // No-op in Expo Go and unconfigured envs.
+  // Re-enable by importing @sentry/react-native in a dev/production build
+  // and wiring EXPO_PUBLIC_SENTRY_DSN in env.
 }
-
-export { Sentry };

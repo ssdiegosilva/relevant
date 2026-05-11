@@ -3,6 +3,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useI18n } from '@/src/lib/i18n';
 
 import type { Domain, StudiedTopic } from '../useKnowledgeTree';
 
@@ -20,6 +21,7 @@ export function DomainTreeCard({
 }) {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
+  const { t } = useI18n();
 
   const visible = domain.children.slice(0, MAX_VISIBLE);
   const remaining = domain.children.length - visible.length;
@@ -28,13 +30,22 @@ export function DomainTreeCard({
   const childrenY = 100;
   const spacing = visible.length > 0 ? width / (visible.length + 1) : 0;
 
+  const displayName = domain.root.slug === 'other' ? t('library.otherDomain') : domain.root.name;
+  const topicsLabel =
+    domain.children.length === 1
+      ? t('library.topicOne')
+      : t('library.topicMany', { n: domain.children.length });
+  const cardsLabel =
+    domain.totalCards === 1
+      ? t('library.cardOne')
+      : t('library.cardMany', { n: domain.totalCards });
+
   return (
     <View style={[styles.card, { borderColor: c.icon + '33', backgroundColor: c.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.domainName, { color: c.text }]}>{domain.root.name}</Text>
+        <Text style={[styles.domainName, { color: c.text }]}>{displayName}</Text>
         <Text style={[styles.stats, { color: c.icon }]}>
-          {domain.children.length} {domain.children.length === 1 ? 'topic' : 'topics'} · {domain.totalCards}{' '}
-          {domain.totalCards === 1 ? 'card' : 'cards'}
+          {topicsLabel} · {cardsLabel}
         </Text>
       </View>
 
@@ -69,7 +80,7 @@ export function DomainTreeCard({
             <Circle cx={20} cy={20} r={9} fill={c.tint} />
             <Circle cx={20} cy={20} r={4} fill={c.background} />
           </Svg>
-          <Text style={[styles.emptyHint, { color: c.icon }]}>Just the root for now</Text>
+          <Text style={[styles.emptyHint, { color: c.icon }]}>{t('library.justRoot')}</Text>
         </View>
       )}
 
@@ -85,7 +96,7 @@ export function DomainTreeCard({
         ))}
         {remaining > 0 ? (
           <View style={[styles.chip, { borderColor: c.icon + '33', borderStyle: 'dashed' }]}>
-            <Text style={[styles.chipName, { color: c.icon }]}>+{remaining} more</Text>
+            <Text style={[styles.chipName, { color: c.icon }]}>{t('library.moreCount', { n: remaining })}</Text>
           </View>
         ) : null}
       </View>

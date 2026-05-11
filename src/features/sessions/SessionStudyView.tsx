@@ -1,14 +1,15 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/src/features/auth/AuthProvider';
 import { CardCarousel } from '@/src/features/cards/components/CardCarousel';
-import { useCardAction } from '@/src/features/cards/useCardAction';
+import { useCardAction, useRemoveCardAction } from '@/src/features/cards/useCardAction';
 import type { Card } from '@/src/features/cards/types';
+import { useI18n } from '@/src/lib/i18n';
 
 import { useSession } from './useSession';
 
@@ -24,9 +25,12 @@ export function SessionStudyView({
   const { session: auth } = useAuth();
   const userId = auth?.user.id;
   const queryClient = useQueryClient();
+  const { t } = useI18n();
 
   const { data, isLoading } = useSession(sessionId, userId);
   const action = useCardAction();
+  const removeAction = useRemoveCardAction();
+  const [finishing, setFinishing] = useState(false);
 
   const cards: Card[] = data?.cards ?? [];
   const interactions = data?.interactions ?? [];
@@ -35,31 +39,47 @@ export function SessionStudyView({
     () => new Set(interactions.filter((i) => i.action === 'studied').map((i) => i.card_id)),
     [interactions],
   );
-  const savedIds = useMemo(
+  const favoritedIds = useMemo(
     () => new Set(interactions.filter((i) => i.action === 'saved').map((i) => i.card_id)),
     [interactions],
   );
-  const skippedIds = useMemo(
-    () => new Set(interactions.filter((i) => i.action === 'skipped').map((i) => i.card_id)),
-    [interactions],
-  );
 
-  const allActed =
-    cards.length > 0 && cards.every((card) => studiedIds.has(card.id) || savedIds.has(card.id) || skippedIds.has(card.id));
+  const allStudied = cards.length > 0 && cards.every((card) => studiedIds.has(card.id));
 
-  const trigger = (cardId: string, act: 'studied' | 'saved' | 'skipped') => {
-    action.mutate(
-      { cardId, action: act },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
-          queryClient.invalidateQueries({ queryKey: ['pending-sessions', userId] });
-          queryClient.invalidateQueries({ queryKey: ['knowledge-tree', userId] });
-          queryClient.invalidateQueries({ queryKey: ['saved-cards', userId] });
-          queryClient.invalidateQueries({ queryKey: ['profile', userId] });
-        },
-      },
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
+    queryClient.invalidateQueries({ queryKey: ['pending-sessions', userId] });
+    queryClient.invalidateQueries({ queryKey: ['knowledge-tree', userId] });
+    queryClient.invalidateQueries({ queryKey: ['saved-cards', userId] });
+    queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+  };
+
+  const toggleFavorite = (cardId: string) => {
+    const isActive = favoritedIds.has(cardId);
+    const fn = isActive ? removeAction : action;
+    fn.mutate(
+      { cardId, action: 'saved' },
+      { onSuccess: invalidateAll },
     );
+  };
+
+  const finishSession = async () => {
+    const toStudy = cards.filter((card) => !studiedIds.has(card.id));
+    if (toStudy.length === 0) {
+      invalidateAll();
+      return;
+    }
+    setFinishing(true);
+    try {
+      await Promise.all(
+        toStudy.map((card) => action.mutateAsync({ cardId: card.id, action: 'studied' })),
+      );
+      invalidateAll();
+    } catch (e: any) {
+      Alert.alert('Could not finish', e?.message ?? t('common.tryAgain'));
+    } finally {
+      setFinishing(false);
+    }
   };
 
   if (isLoading) {
@@ -72,20 +92,20 @@ export function SessionStudyView({
     );
   }
 
-  if (allActed) {
+  if (allStudied) {
     const studiedCount = studiedIds.size;
-    const savedCount = savedIds.size;
-    const xp = studiedCount * 10 + (studiedCount >= 3 ? 20 : 0) + 10;
+    const favoritedCount = favoritedIds.size;
+    const xp = studiedCount * 10;
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
         <View style={styles.summary}>
-          <Text style={[styles.heading, { color: c.text }]}>Nice work</Text>
-          <Text style={[styles.summaryStat, { color: c.tint }]}>+{xp} XP</Text>
+          <Text style={[styles.heading, { color: c.text }]}>{t('session.niceWork')}</Text>
+          <Text style={[styles.summaryStat, { color: c.tint }]}>{t('session.xp', { xp })}</Text>
           <Text style={[styles.subtitle, { color: c.icon }]}>
-            Studied {studiedCount} · Saved {savedCount}
+            {t('session.summary', { studied: studiedCount, favorited: favoritedCount })}
           </Text>
           <Pressable style={[styles.button, { backgroundColor: c.tint, marginTop: 24 }]} onPress={onClose}>
-            <Text style={styles.buttonText}>Done</Text>
+            <Text style={styles.buttonText}>{t('common.done')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -96,20 +116,15 @@ export function SessionStudyView({
     <SafeAreaView style={[styles.container, { backgroundColor: c.background }]}>
       <View style={styles.header}>
         <Pressable onPress={onClose} style={[styles.closeButton, { borderColor: c.icon }]}>
-          <Text style={{ color: c.text }}>← Back</Text>
+          <Text style={{ color: c.text }}>← {t('common.back')}</Text>
         </Pressable>
-        <Text style={[styles.headerCount, { color: c.icon }]}>
-          {studiedIds.size + savedIds.size + skippedIds.size} of {cards.length}
-        </Text>
       </View>
       <CardCarousel
         cards={cards}
-        studiedIds={studiedIds}
-        savedIds={savedIds}
-        skippedIds={skippedIds}
-        onStudied={(card) => trigger(card.id, 'studied')}
-        onSave={(card) => trigger(card.id, 'saved')}
-        onSkip={(card) => trigger(card.id, 'skipped')}
+        favoritedIds={favoritedIds}
+        finishing={finishing}
+        onFavorite={(card) => toggleFavorite(card.id)}
+        onFinish={finishSession}
       />
     </SafeAreaView>
   );
