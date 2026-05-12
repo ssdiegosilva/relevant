@@ -37,6 +37,7 @@ const cardsSchema = {
           'estimated_minutes',
           'topics',
           'macro_category',
+          'suggestions',
         ],
         properties: {
           title: { type: 'string', maxLength: 120 },
@@ -51,6 +52,12 @@ const cardsSchema = {
           macro_category: {
             type: 'string',
             enum: [...MACRO_SLUGS],
+          },
+          suggestions: {
+            type: 'array',
+            items: { type: 'string', maxLength: 80 },
+            minItems: 3,
+            maxItems: 4,
           },
         },
       },
@@ -174,7 +181,8 @@ Already studied recently (avoid pure repetition, build on it): ${recentTopicName
 - Use Markdown. Use code fences ONLY when the content actually warrants code.
 - Topic slugs lowercase hyphenated (e.g. "spaced-repetition", "zone-2-training", "compound-interest", "rate-limiting", "stoic-dichotomy-of-control").
 - Be opinionated and specific. No hedging fluff. Each card under 250 words.
-- macro_category: pick EXACTLY ONE of [tech, health, psychology, career, finance, productivity, family-relationships, learning, philosophy-culture, hobbies-creativity]. This is the trail the card belongs to. Software / engineering / DevOps / data → "tech". Workouts, sleep, nutrition, longevity → "health". Habits, emotions, mental health → "psychology". Leadership, hiring, salary, founder skills → "career". Investing, real estate, retirement, crypto → "finance". Time management, deep work, GTD, note-taking → "productivity". Parenting, marriage, family, dating → "family-relationships". Spaced repetition, languages, memory, deliberate practice → "learning". Stoicism, history, ethics, culture, religion → "philosophy-culture". Cooking, music, sports, photography, travel, crafts → "hobbies-creativity".`;
+- macro_category: pick EXACTLY ONE of [tech, health, psychology, career, finance, productivity, family-relationships, learning, philosophy-culture, hobbies-creativity]. This is the trail the card belongs to. Software / engineering / DevOps / data → "tech". Workouts, sleep, nutrition, longevity → "health". Habits, emotions, mental health → "psychology". Leadership, hiring, salary, founder skills → "career". Investing, real estate, retirement, crypto → "finance". Time management, deep work, GTD, note-taking → "productivity". Parenting, marriage, family, dating → "family-relationships". Spaced repetition, languages, memory, deliberate practice → "learning". Stoicism, history, ethics, culture, religion → "philosophy-culture". Cooking, music, sports, photography, travel, crafts → "hobbies-creativity".
+- suggestions: 3 or 4 short next-step prompts the reader could tap to go deeper on THIS card. Each ≤ 80 chars, imperative voice, varied directions (e.g., "Show a concrete example", "Compare with alternatives", "What are common pitfalls?", "Take it one level deeper", "How does this apply day-to-day?"). Tailor them to the card's content — don't repeat boilerplate.`;
 
   let systemPrompt: string;
   let userPrompt: string;
@@ -313,6 +321,7 @@ ${sharedRules}`;
         estimated_minutes: c.estimated_minutes,
         source: `openai:${MODEL}`,
         content_hash: hash,
+        suggestions: Array.isArray(c.suggestions) ? c.suggestions : [],
       })
       .select()
       .single();

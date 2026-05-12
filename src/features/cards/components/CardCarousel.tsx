@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Dimensions, FlatList, ScrollView, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, StyleSheet, View } from 'react-native';
 
 import { CardItem } from './CardItem';
 import type { Card } from '../types';
@@ -42,21 +42,17 @@ export function CardCarousel({
       }}
       renderItem={({ item, index }) => (
         <View style={[styles.page, { width }]}>
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}>
-            <CardItem
-              card={item}
-              index={index}
-              total={cards.length}
-              isLast={index === cards.length - 1}
-              favorited={favoritedIds.has(item.id)}
-              finishing={finishing}
-              onFavorite={() => onFavorite(item)}
-              onNext={() => handleNext(index)}
-              onFinish={onFinish}
-            />
-          </ScrollView>
+          <CardItem
+            card={item}
+            index={index}
+            total={cards.length}
+            isLast={index === cards.length - 1}
+            favorited={favoritedIds.has(item.id)}
+            finishing={finishing}
+            onFavorite={() => onFavorite(item)}
+            onNext={() => handleNext(index)}
+            onFinish={onFinish}
+          />
         </View>
       )}
     />
@@ -64,6 +60,5 @@ export function CardCarousel({
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 40, flexGrow: 1 },
+  page: { flex: 1, paddingHorizontal: 20, paddingBottom: 20 },
 });

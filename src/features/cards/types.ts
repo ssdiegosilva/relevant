@@ -12,6 +12,16 @@ export type Card = {
   estimated_minutes: number;
   source: string;
   content_hash: string;
+  suggestions: string[] | null;
+  created_at: string;
+};
+
+export type CardDeepening = {
+  id: string;
+  card_id: string;
+  prompt: string;
+  content: string;
+  suggestions: string[] | null;
   created_at: string;
 };
 

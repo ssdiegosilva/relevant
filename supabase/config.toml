@@ -2,3 +2,9 @@ project_id = "relevant"
 
 [functions.generate-cards]
 verify_jwt = true
+
+[functions.deepen-card]
+verify_jwt = true
+
+[functions.translate-text]
+verify_jwt = true

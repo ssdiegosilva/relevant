@@ -1,28 +1,11 @@
-import Markdown from 'react-native-markdown-display';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useI18n } from '@/src/lib/i18n';
-import type { StringKey } from '@/src/lib/strings';
 
-import type { Card, CardType } from '../types';
-
-const TYPE_KEY: Record<CardType, StringKey> = {
-  concept: 'cardType.concept',
-  example: 'cardType.example',
-  best_practice: 'cardType.best_practice',
-  pitfall: 'cardType.pitfall',
-  news: 'cardType.news',
-};
-
-const TYPE_COLOR: Record<CardType, string> = {
-  concept: '#3478F6',
-  example: '#34C759',
-  best_practice: '#5856D6',
-  pitfall: '#FF9500',
-  news: '#FF3B30',
-};
+import type { Card } from '../types';
+import { CardContent } from './CardContent';
 
 const ACTION_COLOR = '#3478F6';
 const FAVORITE_COLOR = '#FFB400';
@@ -53,60 +36,14 @@ export function CardItem({
 } & CardActionTriggers) {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
-  const accent = TYPE_COLOR[card.card_type];
   const { t } = useI18n();
 
   return (
     <View style={[styles.card, { backgroundColor: c.background }]}>
-      <View style={styles.header}>
-        <View style={[styles.typeBadge, { backgroundColor: accent + '22' }]}>
-          <Text style={{ color: accent, fontWeight: '600', fontSize: 12 }}>
-            {t(TYPE_KEY[card.card_type])}
-          </Text>
-        </View>
-        <Text style={[styles.progress, { color: c.icon }]}>
-          {t('card.progress', { i: index + 1, total, min: card.estimated_minutes })}
-        </Text>
-      </View>
-
-      <Text style={[styles.title, { color: c.text }]}>{card.title}</Text>
-
-      <View style={styles.markdownContainer}>
-        <Markdown
-          style={{
-            body: { color: c.text, fontSize: 15, lineHeight: 22 },
-            heading1: { color: c.text, fontSize: 20, fontWeight: '700' },
-            heading2: { color: c.text, fontSize: 17, fontWeight: '700' },
-            heading3: { color: c.text, fontSize: 15, fontWeight: '700' },
-            code_inline: {
-              backgroundColor: scheme === 'dark' ? '#2a2a2a' : '#f0f0f0',
-              color: scheme === 'dark' ? '#e0e0e0' : '#1a1a1a',
-              fontFamily: 'Menlo',
-              fontSize: 13,
-              paddingHorizontal: 4,
-              borderRadius: 3,
-            },
-            code_block: {
-              backgroundColor: scheme === 'dark' ? '#1a1a1a' : '#f6f6f6',
-              color: scheme === 'dark' ? '#e0e0e0' : '#1a1a1a',
-              fontFamily: 'Menlo',
-              fontSize: 13,
-              padding: 10,
-              borderRadius: 6,
-            },
-            fence: {
-              backgroundColor: scheme === 'dark' ? '#1a1a1a' : '#f6f6f6',
-              color: scheme === 'dark' ? '#e0e0e0' : '#1a1a1a',
-              fontFamily: 'Menlo',
-              fontSize: 13,
-              padding: 10,
-              borderRadius: 6,
-            },
-            link: { color: c.tint },
-          }}>
-          {card.content}
-        </Markdown>
-      </View>
+      <CardContent
+        card={card}
+        progressText={t('card.progress', { i: index + 1, total, min: card.estimated_minutes })}
+      />
 
       <View style={styles.actions}>
         <ActionButton
@@ -173,11 +110,6 @@ function ActionButton({
 
 const styles = StyleSheet.create({
   card: { flex: 1, paddingHorizontal: 4, paddingVertical: 12, gap: 12 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  progress: { fontSize: 12 },
-  title: { fontSize: 22, fontWeight: '700', lineHeight: 28 },
-  markdownContainer: { flex: 1 },
   actions: { flexDirection: 'row', gap: 8, marginTop: 8 },
   actionButton: {
     flex: 1,
